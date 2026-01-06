@@ -12,6 +12,9 @@ import {
   serializeTodoItem
 } from '@/lib/db-types';
 
+// Mark this route as dynamic to prevent static optimization
+export const dynamic = 'force-dynamic';
+
 /**
  * PATCH /api/lists/[shareId]/items/[itemId]
  * Update a todo item's text, completion status, or order

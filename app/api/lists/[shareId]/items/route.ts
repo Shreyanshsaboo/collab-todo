@@ -11,6 +11,9 @@ import {
   serializeTodoItem
 } from '@/lib/db-types';
 
+// Mark this route as dynamic to prevent static optimization
+export const dynamic = 'force-dynamic';
+
 /**
  * POST /api/lists/[shareId]/items
  * Create a new todo item in a list

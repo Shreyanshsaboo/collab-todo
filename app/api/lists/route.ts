@@ -12,6 +12,9 @@ import {
   serializeTodoList 
 } from '@/lib/db-types';
 
+// Mark this route as dynamic to prevent static optimization
+export const dynamic = 'force-dynamic';
+
 /**
  * GET /api/lists
  * Get all lists owned by the authenticated user

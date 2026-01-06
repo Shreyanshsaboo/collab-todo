@@ -5,6 +5,9 @@ import { checkSignupRateLimit } from '@/lib/rate-limit';
 import validator from 'validator';
 import { UserDocument } from '@/lib/db-types';
 
+// Mark this route as dynamic to prevent static optimization
+export const dynamic = 'force-dynamic';
+
 export async function POST(req: NextRequest) {
   try {
     // Rate limiting check

@@ -4,6 +4,9 @@ import { verifyPassword, generateToken, serializeUser } from '@/lib/auth';
 import { checkSigninRateLimit } from '@/lib/rate-limit';
 import { UserDocument } from '@/lib/db-types';
 
+// Mark this route as dynamic to prevent static optimization
+export const dynamic = 'force-dynamic';
+
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();

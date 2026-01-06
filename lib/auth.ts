@@ -2,12 +2,20 @@ import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import { UserDocument, UserAPI } from './db-types';
 
-const JWT_SECRET = process.env.JWT_SECRET!;
-const JWT_EXPIRATION = process.env.JWT_EXPIRATION || '24h';
-const BCRYPT_ROUNDS = 12;
+function getJwtSecret(): string {
+  const secret = process.env.JWT_SECRET;
+  if (!secret) {
+    throw new Error('JWT_SECRET environment variable is required');
+  }
+  return secret;
+}
 
-if (!JWT_SECRET) {
-  throw new Error('JWT_SECRET environment variable is required');
+function getJwtExpiration() {
+  return process.env.JWT_EXPIRATION || '24h';
+}
+
+function getBcryptRounds() {
+  return 12;
 }
 
 /**
@@ -16,7 +24,7 @@ if (!JWT_SECRET) {
  * @returns Promise resolving to bcrypt hash string (60 characters)
  */
 export async function hashPassword(password: string): Promise<string> {
-  return bcrypt.hash(password, BCRYPT_ROUNDS);
+  return bcrypt.hash(password, getBcryptRounds());
 }
 
 /**
@@ -40,14 +48,15 @@ export async function verifyPassword(
  * @returns JWT token string
  */
 export function generateToken(user: UserDocument): string {
+  const secret = getJwtSecret(); // Call at runtime, not module load time
   const token = jwt.sign(
     {
       userId: user._id.toString(),
       email: user.email,
     },
-    JWT_SECRET,
+    secret,
     {
-      expiresIn: JWT_EXPIRATION,
+      expiresIn: getJwtExpiration(),
     } as jwt.SignOptions
   );
   return token;
@@ -64,7 +73,8 @@ export function verifyToken(token: string): {
   email: string;
 } {
   try {
-    const decoded = jwt.verify(token, JWT_SECRET) as {
+    const secret = getJwtSecret(); // Call at runtime, not module load time
+    const decoded = jwt.verify(token, secret) as {
       userId: string;
       email: string;
     };
