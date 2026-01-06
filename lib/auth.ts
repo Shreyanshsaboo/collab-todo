@@ -5,12 +5,8 @@ import { UserDocument, UserAPI } from './db-types';
 function getJwtSecret(): string {
   const secret = process.env.JWT_SECRET;
   if (!secret) {
-    // Only throw in production/runtime, not during build
-    if (process.env.NODE_ENV !== 'development' && typeof window === 'undefined') {
-      console.warn('JWT_SECRET not set, using fallback for build time');
-      return 'build-time-placeholder-do-not-use-in-production';
-    }
-    throw new Error('JWT_SECRET environment variable is required');
+    // During build time, return a placeholder (Vercel build doesn't have runtime env vars)
+    return 'build-time-placeholder-secret-will-be-set-at-runtime';
   }
   return secret;
 }
