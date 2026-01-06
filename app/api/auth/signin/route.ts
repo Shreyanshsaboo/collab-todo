@@ -37,16 +37,12 @@ export async function POST(req: NextRequest) {
       email: normalizedEmail 
     }) as UserDocument | null;
     
-    // Return same error message for both non-existent user and wrong password
-    // This prevents email enumeration attacks
     if (!user) {
       return NextResponse.json(
         { error: 'Invalid credentials' },
         { status: 401 }
       );
     }
-    
-    // Verify password (constant-time comparison via bcrypt)
     const isValid = await verifyPassword(password, user.passwordHash);
     if (!isValid) {
       return NextResponse.json(
@@ -68,7 +64,7 @@ export async function POST(req: NextRequest) {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'strict',
-      maxAge: 60 * 60 * 24, // 24 hours
+      maxAge: 60 * 60 * 24,
       path: '/',
     });
     

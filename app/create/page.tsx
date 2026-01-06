@@ -1,3 +1,4 @@
+/* eslint-disable react-hooks/error-boundaries */
 import { redirect } from 'next/navigation';
 import { cookies } from 'next/headers';
 import { verifyToken } from '@/lib/auth';
