@@ -1,0 +1,509 @@
+openapi: 3.0.3
+info:
+  title: Collaborative To-Do Application API
+  description: |
+    RESTful API for managing collaborative to-do lists accessible via shareable links.
+    No authentication required - anyone with a shareId can view and edit lists.
+  version: 1.0.0
+  contact:
+    name: API Support
+    email: support@example.com
+
+servers:
+  - url: http://localhost:3000
+    description: Local development server
+  - url: https://collab-todo.vercel.app
+    description: Production server
+
+tags:
+  - name: Lists
+    description: Operations on todo lists
+  - name: Items
+    description: Operations on todo items
+
+paths:
+  /api/lists:
+    post:
+      tags:
+        - Lists
+      summary: Create a new todo list
+      description: Creates a new list with a unique shareId and returns the list details
+      operationId: createList
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - title
+              properties:
+                title:
+                  type: string
+                  minLength: 1
+                  maxLength: 200
+                  description: The title of the list
+                  example: Team Sprint Tasks
+      responses:
+        '201':
+          description: List created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  list:
+                    $ref: '#/components/schemas/TodoList'
+        '400':
+          description: Bad request (e.g., missing or invalid title)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: "Title is required"
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/lists/{shareId}:
+    get:
+      tags:
+        - Lists
+      summary: Get list and all items
+      description: Retrieves a todo list by shareId along with all its items (sorted by order)
+      operationId: getList
+      parameters:
+        - name: shareId
+          in: path
+          required: true
+          description: The unique 9-character shareId of the list
+          schema:
+            type: string
+            pattern: '^[a-z0-9]{9}$'
+            example: abc123xyz
+      responses:
+        '200':
+          description: List and items retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  list:
+                    $ref: '#/components/schemas/TodoList'
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/TodoItem'
+        '404':
+          description: List not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: "List not found"
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    patch:
+      tags:
+        - Lists
+      summary: Update list metadata
+      description: Updates list properties (currently only title)
+      operationId: updateList
+      parameters:
+        - name: shareId
+          in: path
+          required: true
+          description: The unique 9-character shareId of the list
+          schema:
+            type: string
+            pattern: '^[a-z0-9]{9}$'
+            example: abc123xyz
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                title:
+                  type: string
+                  minLength: 1
+                  maxLength: 200
+                  description: The new title of the list
+                  example: Updated Sprint Tasks
+      responses:
+        '200':
+          description: List updated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  list:
+                    $ref: '#/components/schemas/TodoList'
+        '400':
+          description: Bad request (e.g., invalid title)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: List not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: "List not found"
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/lists/{shareId}/items:
+    post:
+      tags:
+        - Items
+      summary: Add item to list
+      description: Creates a new todo item in the specified list
+      operationId: createItem
+      parameters:
+        - name: shareId
+          in: path
+          required: true
+          description: The unique 9-character shareId of the list
+          schema:
+            type: string
+            pattern: '^[a-z0-9]{9}$'
+            example: abc123xyz
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - text
+              properties:
+                text:
+                  type: string
+                  minLength: 1
+                  maxLength: 500
+                  description: The text description of the todo item
+                  example: Review pull requests
+      responses:
+        '201':
+          description: Item created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  item:
+                    $ref: '#/components/schemas/TodoItem'
+        '400':
+          description: Bad request (e.g., missing or invalid text)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: "Text is required"
+        '404':
+          description: List not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: "List not found"
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/lists/{shareId}/items/{itemId}:
+    patch:
+      tags:
+        - Items
+      summary: Update item
+      description: Updates properties of a todo item (text, completed status, or order)
+      operationId: updateItem
+      parameters:
+        - name: shareId
+          in: path
+          required: true
+          description: The unique 9-character shareId of the list
+          schema:
+            type: string
+            pattern: '^[a-z0-9]{9}$'
+            example: abc123xyz
+        - name: itemId
+          in: path
+          required: true
+          description: The ObjectId of the item to update
+          schema:
+            type: string
+            pattern: '^[a-f0-9]{24}$'
+            example: 507f1f77bcf86cd799439012
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                text:
+                  type: string
+                  minLength: 1
+                  maxLength: 500
+                  description: The new text of the item
+                  example: Review and merge pull requests
+                completed:
+                  type: boolean
+                  description: The completion status
+                  example: true
+                order:
+                  type: integer
+                  minimum: 0
+                  description: The new sort order
+                  example: 200
+      responses:
+        '200':
+          description: Item updated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  item:
+                    $ref: '#/components/schemas/TodoItem'
+        '400':
+          description: Bad request (e.g., invalid field values)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Item not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: "Item not found"
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    delete:
+      tags:
+        - Items
+      summary: Delete item
+      description: Removes a todo item from the list
+      operationId: deleteItem
+      parameters:
+        - name: shareId
+          in: path
+          required: true
+          description: The unique 9-character shareId of the list
+          schema:
+            type: string
+            pattern: '^[a-z0-9]{9}$'
+            example: abc123xyz
+        - name: itemId
+          in: path
+          required: true
+          description: The ObjectId of the item to delete
+          schema:
+            type: string
+            pattern: '^[a-f0-9]{24}$'
+            example: 507f1f77bcf86cd799439012
+      responses:
+        '204':
+          description: Item deleted successfully (no content)
+        '404':
+          description: Item not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: "Item not found"
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+components:
+  schemas:
+    TodoList:
+      type: object
+      required:
+        - _id
+        - shareId
+        - title
+        - createdAt
+        - updatedAt
+      properties:
+        _id:
+          type: string
+          description: MongoDB ObjectId as string
+          pattern: '^[a-f0-9]{24}$'
+          example: 507f1f77bcf86cd799439011
+        shareId:
+          type: string
+          description: Unique 9-character shareable identifier
+          pattern: '^[a-z0-9]{9}$'
+          example: abc123xyz
+        title:
+          type: string
+          description: The title of the list
+          minLength: 1
+          maxLength: 200
+          example: Team Sprint Tasks
+        createdAt:
+          type: string
+          format: date-time
+          description: ISO 8601 timestamp of creation
+          example: "2026-01-05T10:00:00.000Z"
+        updatedAt:
+          type: string
+          format: date-time
+          description: ISO 8601 timestamp of last update
+          example: "2026-01-05T10:30:00.000Z"
+
+    TodoItem:
+      type: object
+      required:
+        - _id
+        - text
+        - completed
+        - order
+        - createdAt
+        - updatedAt
+      properties:
+        _id:
+          type: string
+          description: MongoDB ObjectId as string
+          pattern: '^[a-f0-9]{24}$'
+          example: 507f1f77bcf86cd799439012
+        text:
+          type: string
+          description: The text description of the todo item
+          minLength: 1
+          maxLength: 500
+          example: Review pull requests
+        completed:
+          type: boolean
+          description: Whether the item is completed
+          example: false
+        order:
+          type: integer
+          description: Sort order (integer with gaps)
+          minimum: 0
+          example: 0
+        createdAt:
+          type: string
+          format: date-time
+          description: ISO 8601 timestamp of creation
+          example: "2026-01-05T10:05:00.000Z"
+        updatedAt:
+          type: string
+          format: date-time
+          description: ISO 8601 timestamp of last update
+          example: "2026-01-05T10:05:00.000Z"
+
+    Error:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          type: string
+          description: Human-readable error message
+          example: "List not found"
+
+  examples:
+    CreateListRequest:
+      value:
+        title: "Team Sprint Tasks"
+
+    CreateListResponse:
+      value:
+        list:
+          _id: "507f1f77bcf86cd799439011"
+          shareId: "abc123xyz"
+          title: "Team Sprint Tasks"
+          createdAt: "2026-01-05T10:00:00.000Z"
+          updatedAt: "2026-01-05T10:00:00.000Z"
+
+    GetListResponse:
+      value:
+        list:
+          _id: "507f1f77bcf86cd799439011"
+          shareId: "abc123xyz"
+          title: "Team Sprint Tasks"
+          createdAt: "2026-01-05T10:00:00.000Z"
+          updatedAt: "2026-01-05T10:30:00.000Z"
+        items:
+          - _id: "507f1f77bcf86cd799439012"
+            text: "Review pull requests"
+            completed: false
+            order: 0
+            createdAt: "2026-01-05T10:05:00.000Z"
+            updatedAt: "2026-01-05T10:05:00.000Z"
+          - _id: "507f1f77bcf86cd799439013"
+            text: "Deploy to staging"
+            completed: true
+            order: 100
+            createdAt: "2026-01-05T10:10:00.000Z"
+            updatedAt: "2026-01-05T10:20:00.000Z"
+
+    CreateItemRequest:
+      value:
+        text: "Review pull requests"
+
+    CreateItemResponse:
+      value:
+        item:
+          _id: "507f1f77bcf86cd799439012"
+          text: "Review pull requests"
+          completed: false
+          order: 0
+          createdAt: "2026-01-05T10:05:00.000Z"
+          updatedAt: "2026-01-05T10:05:00.000Z"
+
+    UpdateItemRequest:
+      value:
+        completed: true
+
+    UpdateItemResponse:
+      value:
+        item:
+          _id: "507f1f77bcf86cd799439012"
+          text: "Review pull requests"
+          completed: true
+          order: 0
+          createdAt: "2026-01-05T10:05:00.000Z"
+          updatedAt: "2026-01-05T10:25:00.000Z"

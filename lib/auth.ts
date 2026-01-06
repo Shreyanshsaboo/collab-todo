@@ -1,0 +1,90 @@
+import bcrypt from 'bcrypt';
+import jwt from 'jsonwebtoken';
+import { UserDocument, UserAPI } from './db-types';
+
+const JWT_SECRET = process.env.JWT_SECRET!;
+const JWT_EXPIRATION = process.env.JWT_EXPIRATION || '24h';
+const BCRYPT_ROUNDS = 12;
+
+if (!JWT_SECRET) {
+  throw new Error('JWT_SECRET environment variable is required');
+}
+
+/**
+ * Hash a plaintext password using bcrypt with cost factor 12
+ * @param password - Plaintext password to hash
+ * @returns Promise resolving to bcrypt hash string (60 characters)
+ */
+export async function hashPassword(password: string): Promise<string> {
+  return bcrypt.hash(password, BCRYPT_ROUNDS);
+}
+
+/**
+ * Verify a plaintext password against a bcrypt hash
+ * Uses constant-time comparison to prevent timing attacks
+ * @param password - Plaintext password to verify
+ * @param hash - bcrypt hash to compare against
+ * @returns Promise resolving to true if password matches, false otherwise
+ */
+export async function verifyPassword(
+  password: string,
+  hash: string
+): Promise<boolean> {
+  return bcrypt.compare(password, hash);
+}
+
+/**
+ * Generate a JWT token for an authenticated user
+ * Token expires after JWT_EXPIRATION (default 24h)
+ * @param user - User document from database
+ * @returns JWT token string
+ */
+export function generateToken(user: UserDocument): string {
+  return jwt.sign(
+    {
+      userId: user._id.toString(),
+      email: user.email,
+    },
+    JWT_SECRET,
+    {
+      expiresIn: JWT_EXPIRATION,
+    }
+  );
+}
+
+/**
+ * Verify and decode a JWT token
+ * @param token - JWT token string
+ * @returns Decoded token payload with userId and email
+ * @throws Error if token is invalid or expired
+ */
+export function verifyToken(token: string): {
+  userId: string;
+  email: string;
+} {
+  try {
+    const decoded = jwt.verify(token, JWT_SECRET) as {
+      userId: string;
+      email: string;
+    };
+    return decoded;
+  } catch (error) {
+    throw new Error('Invalid or expired token');
+  }
+}
+
+/**
+ * Serialize a User document for API response
+ * Excludes passwordHash for security
+ * Converts ObjectId and Date to strings
+ * @param user - User document from database
+ * @returns User object safe for API response
+ */
+export function serializeUser(user: UserDocument): UserAPI {
+  return {
+    _id: user._id.toString(),
+    email: user.email,
+    createdAt: user.createdAt.toISOString(),
+    updatedAt: user.updatedAt.toISOString(),
+  };
+}

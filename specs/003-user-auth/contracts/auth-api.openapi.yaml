@@ -1,0 +1,783 @@
+openapi: 3.0.3
+info:
+  title: Collab Todo - Authentication & Authorization API
+  description: |
+    API specification for user authentication and authorization features in the collaborative to-do application.
+    
+    ## Authentication
+    - Uses JWT tokens stored in HTTP-only cookies
+    - Session expiration: 24 hours
+    - Cookie name: `auth_token`
+    
+    ## Authorization Hierarchy
+    1. **Owner** (authenticated user who created list): Full control (read, write, delete)
+    2. **Edit Link** (shareId): Read and write access (no delete)
+    3. **View Link** (viewId): Read-only access
+    
+    ## Rate Limiting
+    - Signup: 3 attempts per IP per hour
+    - Signin: 5 attempts per email per 15 minutes
+    
+    ## Security
+    - All endpoints use HTTPS in production
+    - Passwords hashed with bcrypt (cost factor 12)
+    - Sensitive endpoints require authentication
+  version: 1.0.0
+  contact:
+    name: Collab Todo API Support
+
+servers:
+  - url: http://localhost:3000
+    description: Local development server
+  - url: https://api.collabtodo.app
+    description: Production server
+
+tags:
+  - name: Authentication
+    description: User signup, signin, signout, and session management
+  - name: Lists
+    description: Todo list operations (updated with authentication)
+
+paths:
+  /api/auth/signup:
+    post:
+      tags:
+        - Authentication
+      summary: Create a new user account
+      description: |
+        Register a new user with email and password. Returns user object and sets authentication cookie.
+        
+        **Rate Limit**: 3 attempts per IP per hour
+        
+        **Validation**:
+        - Email must be valid format (RFC 5322)
+        - Email must be unique (case-insensitive)
+        - Password must be minimum 8 characters
+      operationId: signup
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - email
+                - password
+              properties:
+                email:
+                  type: string
+                  format: email
+                  minLength: 5
+                  maxLength: 254
+                  example: alice@example.com
+                  description: User's email address (stored lowercase)
+                password:
+                  type: string
+                  format: password
+                  minLength: 8
+                  example: SecurePass123
+                  description: User's password (will be hashed with bcrypt)
+      responses:
+        '201':
+          description: User created successfully, authentication cookie set
+          headers:
+            Set-Cookie:
+              description: HTTP-only cookie with JWT token
+              schema:
+                type: string
+                example: auth_token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=86400
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user:
+                    $ref: '#/components/schemas/User'
+        '400':
+          description: Invalid request (validation error)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                invalidEmail:
+                  summary: Invalid email format
+                  value:
+                    error: Invalid email format
+                invalidPassword:
+                  summary: Password too short
+                  value:
+                    error: Password must be at least 8 characters
+                duplicateEmail:
+                  summary: Email already registered
+                  value:
+                    error: Email already registered
+        '429':
+          description: Rate limit exceeded
+          headers:
+            Retry-After:
+              description: Seconds until rate limit resets
+              schema:
+                type: integer
+                example: 3600
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: Too many signup attempts. Please try again later.
+
+  /api/auth/signin:
+    post:
+      tags:
+        - Authentication
+      summary: Sign in to existing account
+      description: |
+        Authenticate user with email and password. Returns user object and sets authentication cookie.
+        
+        **Rate Limit**: 5 attempts per email per 15 minutes
+        
+        **Security Notes**:
+        - Returns same error message for invalid email or password (prevents email enumeration)
+        - Uses constant-time password comparison (prevents timing attacks)
+      operationId: signin
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - email
+                - password
+              properties:
+                email:
+                  type: string
+                  format: email
+                  example: alice@example.com
+                password:
+                  type: string
+                  format: password
+                  example: SecurePass123
+      responses:
+        '200':
+          description: Signin successful, authentication cookie set
+          headers:
+            Set-Cookie:
+              description: HTTP-only cookie with JWT token
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user:
+                    $ref: '#/components/schemas/User'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: Invalid credentials
+        '429':
+          description: Rate limit exceeded
+          headers:
+            Retry-After:
+              description: Seconds until rate limit resets
+              schema:
+                type: integer
+                example: 900
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: Too many signin attempts. Please try again later.
+
+  /api/auth/signout:
+    post:
+      tags:
+        - Authentication
+      summary: Sign out current user
+      description: |
+        Invalidates the current authentication session by clearing the authentication cookie.
+        
+        **Note**: JWT tokens are stateless, so the token remains valid until expiration.
+        Client cookie is cleared to prevent reuse.
+      operationId: signout
+      security:
+        - cookieAuth: []
+      responses:
+        '200':
+          description: Signout successful, cookie cleared
+          headers:
+            Set-Cookie:
+              description: Expired cookie to clear client storage
+              schema:
+                type: string
+                example: auth_token=; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=0
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: Signed out successfully
+        '401':
+          description: Not authenticated (no valid cookie)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/auth/me:
+    get:
+      tags:
+        - Authentication
+      summary: Get current authenticated user
+      description: |
+        Returns the currently authenticated user's information.
+        
+        Used to check authentication status and retrieve user details for UI display.
+      operationId: getCurrentUser
+      security:
+        - cookieAuth: []
+      responses:
+        '200':
+          description: User information retrieved
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user:
+                    $ref: '#/components/schemas/User'
+        '401':
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: Authentication required
+
+  /api/lists:
+    post:
+      tags:
+        - Lists
+      summary: Create a new todo list (requires authentication)
+      description: |
+        **UPDATED**: Now requires authentication. Created list is associated with authenticated user as owner.
+        
+        **Authorization**: Must be authenticated
+      operationId: createList
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - title
+              properties:
+                title:
+                  type: string
+                  minLength: 1
+                  maxLength: 200
+                  example: Team Sprint Tasks
+      responses:
+        '201':
+          description: List created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  list:
+                    $ref: '#/components/schemas/TodoList'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: Authentication required
+
+    get:
+      tags:
+        - Lists
+      summary: Get all lists owned by authenticated user
+      description: |
+        **NEW**: Returns lists where authenticated user is the owner.
+        
+        Used for user dashboard view.
+        
+        **Authorization**: Must be authenticated
+      operationId: getOwnedLists
+      security:
+        - cookieAuth: []
+      responses:
+        '200':
+          description: Lists retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  lists:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/TodoList'
+        '401':
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/lists/{shareId}:
+    get:
+      tags:
+        - Lists
+      summary: Get list by shareId or viewId
+      description: |
+        **Authorization**: Owner OR valid edit link (shareId) OR valid view link (viewId)
+        
+        No authentication required if accessing via valid link.
+      operationId: getList
+      security:
+        - cookieAuth: []
+        - {}
+      parameters:
+        - name: shareId
+          in: path
+          required: true
+          description: Share ID (edit link) or View ID (view-only link)
+          schema:
+            type: string
+            pattern: '^[a-zA-Z0-9]{9}$'
+            example: aBc123XyZ
+      responses:
+        '200':
+          description: List retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  list:
+                    $ref: '#/components/schemas/TodoList'
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/TodoItem'
+        '404':
+          description: List not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    patch:
+      tags:
+        - Lists
+      summary: Update list metadata (e.g., title)
+      description: |
+        **Authorization**: Owner OR valid edit link (shareId)
+        
+        View-only link (viewId) cannot perform this operation.
+      operationId: updateList
+      security:
+        - cookieAuth: []
+        - {}
+      parameters:
+        - name: shareId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                title:
+                  type: string
+                  minLength: 1
+                  maxLength: 200
+      responses:
+        '200':
+          description: List updated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  list:
+                    $ref: '#/components/schemas/TodoList'
+        '403':
+          description: Insufficient permissions (view-only access)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: Forbidden
+        '404':
+          description: List not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    delete:
+      tags:
+        - Lists
+      summary: Delete list (owner only)
+      description: |
+        **UPDATED**: Now requires authenticated owner.
+        
+        **Authorization**: Owner ONLY (edit/view links cannot delete)
+        
+        **Note**: Lists without owner (created before auth system) cannot be deleted.
+      operationId: deleteList
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: shareId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: List deleted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: List deleted successfully
+        '401':
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Not the owner (cannot delete via link)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: Only the list owner can delete this list
+        '404':
+          description: List not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/lists/{shareId}/items:
+    post:
+      tags:
+        - Lists
+      summary: Add item to list
+      description: |
+        **Authorization**: Owner OR valid edit link (shareId)
+        
+        View-only link (viewId) cannot perform this operation.
+      operationId: createItem
+      security:
+        - cookieAuth: []
+        - {}
+      parameters:
+        - name: shareId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - text
+              properties:
+                text:
+                  type: string
+                  minLength: 1
+                  maxLength: 500
+      responses:
+        '201':
+          description: Item created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  item:
+                    $ref: '#/components/schemas/TodoItem'
+        '403':
+          description: Insufficient permissions (view-only or no access)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: List not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/lists/{shareId}/items/{itemId}:
+    patch:
+      tags:
+        - Lists
+      summary: Update item (complete/uncomplete, edit text)
+      description: |
+        **Authorization**: Owner OR valid edit link (shareId)
+      operationId: updateItem
+      security:
+        - cookieAuth: []
+        - {}
+      parameters:
+        - name: shareId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: itemId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                text:
+                  type: string
+                  maxLength: 500
+                completed:
+                  type: boolean
+      responses:
+        '200':
+          description: Item updated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  item:
+                    $ref: '#/components/schemas/TodoItem'
+        '403':
+          description: Insufficient permissions
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Item or list not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    delete:
+      tags:
+        - Lists
+      summary: Delete item
+      description: |
+        **Authorization**: Owner OR valid edit link (shareId)
+      operationId: deleteItem
+      security:
+        - cookieAuth: []
+        - {}
+      parameters:
+        - name: shareId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: itemId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Item deleted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: Item deleted successfully
+        '403':
+          description: Insufficient permissions
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Item or list not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+components:
+  securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: auth_token
+      description: JWT token stored in HTTP-only cookie
+
+  schemas:
+    User:
+      type: object
+      required:
+        - _id
+        - email
+        - createdAt
+        - updatedAt
+      properties:
+        _id:
+          type: string
+          format: objectId
+          example: 65a1b2c3d4e5f6a7b8c9d0e1
+          description: Unique user identifier (MongoDB ObjectId as string)
+        email:
+          type: string
+          format: email
+          example: alice@example.com
+          description: User's email address
+        createdAt:
+          type: string
+          format: date-time
+          example: '2026-01-06T10:30:00.000Z'
+          description: Account creation timestamp (ISO 8601)
+        updatedAt:
+          type: string
+          format: date-time
+          example: '2026-01-06T10:30:00.000Z'
+          description: Last account update timestamp (ISO 8601)
+
+    TodoList:
+      type: object
+      required:
+        - _id
+        - shareId
+        - viewId
+        - title
+        - createdAt
+        - updatedAt
+      properties:
+        _id:
+          type: string
+          format: objectId
+          example: 65a1b2c3d4e5f6a7b8c9d0e2
+        userId:
+          type: string
+          format: objectId
+          example: 65a1b2c3d4e5f6a7b8c9d0e1
+          description: Owner user ID (optional for old lists created before auth)
+        shareId:
+          type: string
+          pattern: '^[a-zA-Z0-9]{9}$'
+          example: aBc123XyZ
+          description: Edit link identifier (9-char alphanumeric)
+        viewId:
+          type: string
+          pattern: '^[a-zA-Z0-9]{9}$'
+          example: xYz987AbC
+          description: View-only link identifier (9-char alphanumeric)
+        title:
+          type: string
+          maxLength: 200
+          example: Team Sprint Tasks
+        createdAt:
+          type: string
+          format: date-time
+          example: '2026-01-06T11:00:00.000Z'
+        updatedAt:
+          type: string
+          format: date-time
+          example: '2026-01-06T11:00:00.000Z'
+
+    TodoItem:
+      type: object
+      required:
+        - _id
+        - text
+        - completed
+        - order
+        - createdAt
+        - updatedAt
+      properties:
+        _id:
+          type: string
+          format: objectId
+          example: 65a1b2c3d4e5f6a7b8c9d0e3
+        text:
+          type: string
+          maxLength: 500
+          example: Write API documentation
+        completed:
+          type: boolean
+          example: false
+        order:
+          type: integer
+          example: 0
+          description: Display order (for sorting)
+        createdAt:
+          type: string
+          format: date-time
+          example: '2026-01-06T11:05:00.000Z'
+        updatedAt:
+          type: string
+          format: date-time
+          example: '2026-01-06T11:05:00.000Z'
+
+    Error:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          type: string
+          example: Invalid email format
+          description: Human-readable error message

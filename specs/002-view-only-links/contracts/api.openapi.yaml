@@ -1,0 +1,598 @@
+openapi: 3.1.0
+info:
+  title: Collab Todo API
+  version: 2.0.0
+  description: |
+    Collaborative todo list API with view-only access control.
+    
+    **Permission Model**:
+    - **Edit Permission**: Access via shareId allows full CRUD operations
+    - **View Permission**: Access via viewId allows only read operations
+    
+    **Authentication**: Link-based access control (no user accounts)
+servers:
+  - url: http://localhost:3000/api
+    description: Development server
+
+paths:
+  /lists:
+    post:
+      summary: Create new todo list
+      description: |
+        Creates a new todo list with both shareId (edit permission) and viewId (view permission).
+        Both identifiers are generated server-side.
+      operationId: createList
+      tags:
+        - Lists
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - title
+              properties:
+                title:
+                  type: string
+                  minLength: 1
+                  example: "Grocery Shopping"
+                  description: Display name for the list
+      responses:
+        '201':
+          description: List created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TodoList'
+        '400':
+          description: Invalid request body
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: "Title is required"
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /lists/{id}:
+    get:
+      summary: Get todo list
+      description: |
+        Retrieves a todo list by shareId or viewId.
+        Permission is detected based on which identifier matches.
+        
+        - If `id` matches `shareId`: Returns list with `permission: "edit"`
+        - If `id` matches `viewId`: Returns list with `permission: "view"`
+      operationId: getList
+      tags:
+        - Lists
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^[a-z0-9]{9}$'
+          description: Either shareId (edit) or viewId (view)
+          example: "abc123xyz"
+      responses:
+        '200':
+          description: List retrieved successfully
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/TodoList'
+                  - type: object
+                    required:
+                      - permission
+                    properties:
+                      permission:
+                        $ref: '#/components/schemas/Permission'
+        '400':
+          description: Invalid ID format
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: "Invalid shareId format"
+        '404':
+          description: List not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: "List not found"
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    put:
+      summary: Update todo list
+      description: |
+        Updates list title. Requires edit permission.
+        Returns 403 Forbidden if accessed via viewId.
+      operationId: updateList
+      tags:
+        - Lists
+      security:
+        - editPermission: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^[a-z0-9]{9}$'
+          description: Must be shareId (not viewId)
+          example: "abc123xyz"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - title
+              properties:
+                title:
+                  type: string
+                  minLength: 1
+                  example: "Updated List Title"
+      responses:
+        '200':
+          description: List updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TodoList'
+        '400':
+          description: Invalid request body or ID format
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Edit permission required (accessed with viewId)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: "Edit permission required"
+        '404':
+          description: List not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    delete:
+      summary: Delete todo list
+      description: |
+        Deletes a todo list and all its items. Requires edit permission.
+        Returns 403 Forbidden if accessed via viewId.
+      operationId: deleteList
+      tags:
+        - Lists
+      security:
+        - editPermission: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^[a-z0-9]{9}$'
+          description: Must be shareId (not viewId)
+          example: "abc123xyz"
+      responses:
+        '204':
+          description: List deleted successfully
+        '400':
+          description: Invalid ID format
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Edit permission required (accessed with viewId)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: "Edit permission required"
+        '404':
+          description: List not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /lists/{id}/items:
+    get:
+      summary: Get todo items
+      description: |
+        Retrieves all items for a list. Available with both edit and view permissions.
+      operationId: getItems
+      tags:
+        - Items
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^[a-z0-9]{9}$'
+          description: Either shareId (edit) or viewId (view)
+          example: "abc123xyz"
+      responses:
+        '200':
+          description: Items retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - items
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/TodoItem'
+        '400':
+          description: Invalid ID format
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: List not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    post:
+      summary: Create todo item
+      description: |
+        Creates a new todo item. Requires edit permission.
+        Returns 403 Forbidden if accessed via viewId.
+      operationId: createItem
+      tags:
+        - Items
+      security:
+        - editPermission: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^[a-z0-9]{9}$'
+          description: Must be shareId (not viewId)
+          example: "abc123xyz"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - text
+              properties:
+                text:
+                  type: string
+                  minLength: 1
+                  example: "Buy milk"
+                  description: Task description
+      responses:
+        '201':
+          description: Item created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TodoItem'
+        '400':
+          description: Invalid request body or ID format
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Edit permission required (accessed with viewId)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: "Edit permission required"
+        '404':
+          description: List not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /lists/{listId}/items/{itemId}:
+    put:
+      summary: Update todo item
+      description: |
+        Updates item text or completion status. Requires edit permission.
+        Returns 403 Forbidden if accessed via viewId.
+      operationId: updateItem
+      tags:
+        - Items
+      security:
+        - editPermission: []
+      parameters:
+        - name: listId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^[a-z0-9]{9}$'
+          description: Must be shareId (not viewId)
+          example: "abc123xyz"
+        - name: itemId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^[a-f0-9]{24}$'
+          description: MongoDB ObjectId of the item
+          example: "507f1f77bcf86cd799439011"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                text:
+                  type: string
+                  minLength: 1
+                  example: "Buy whole milk"
+                completed:
+                  type: boolean
+                  example: true
+              minProperties: 1
+      responses:
+        '200':
+          description: Item updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TodoItem'
+        '400':
+          description: Invalid request body or ID format
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Edit permission required (accessed with viewId)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: "Edit permission required"
+        '404':
+          description: List or item not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    delete:
+      summary: Delete todo item
+      description: |
+        Deletes a todo item. Requires edit permission.
+        Returns 403 Forbidden if accessed via viewId.
+      operationId: deleteItem
+      tags:
+        - Items
+      security:
+        - editPermission: []
+      parameters:
+        - name: listId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^[a-z0-9]{9}$'
+          description: Must be shareId (not viewId)
+          example: "abc123xyz"
+        - name: itemId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^[a-f0-9]{24}$'
+          description: MongoDB ObjectId of the item
+          example: "507f1f77bcf86cd799439011"
+      responses:
+        '204':
+          description: Item deleted successfully
+        '400':
+          description: Invalid ID format
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Edit permission required (accessed with viewId)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: "Edit permission required"
+        '404':
+          description: List or item not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+components:
+  schemas:
+    TodoList:
+      type: object
+      required:
+        - _id
+        - shareId
+        - viewId
+        - title
+        - createdAt
+        - updatedAt
+      properties:
+        _id:
+          type: string
+          pattern: '^[a-f0-9]{24}$'
+          description: MongoDB ObjectId
+          example: "507f1f77bcf86cd799439011"
+        shareId:
+          type: string
+          pattern: '^[a-z0-9]{9}$'
+          description: Edit permission identifier
+          example: "abc123xyz"
+        viewId:
+          type: string
+          pattern: '^[a-z0-9]{9}$'
+          description: View permission identifier
+          example: "def456uvw"
+        title:
+          type: string
+          minLength: 1
+          description: Display name for the list
+          example: "Grocery Shopping"
+        createdAt:
+          type: string
+          format: date-time
+          description: ISO 8601 timestamp
+          example: "2026-01-06T12:00:00.000Z"
+        updatedAt:
+          type: string
+          format: date-time
+          description: ISO 8601 timestamp
+          example: "2026-01-06T13:30:00.000Z"
+
+    TodoItem:
+      type: object
+      required:
+        - _id
+        - listShareId
+        - text
+        - completed
+        - createdAt
+      properties:
+        _id:
+          type: string
+          pattern: '^[a-f0-9]{24}$'
+          description: MongoDB ObjectId
+          example: "507f191e810c19729de860ea"
+        listShareId:
+          type: string
+          pattern: '^[a-z0-9]{9}$'
+          description: Foreign key to TodoList.shareId
+          example: "abc123xyz"
+        text:
+          type: string
+          minLength: 1
+          description: Task description
+          example: "Buy milk"
+        completed:
+          type: boolean
+          description: Task completion status
+          example: false
+        createdAt:
+          type: string
+          format: date-time
+          description: ISO 8601 timestamp
+          example: "2026-01-06T12:00:00.000Z"
+
+    Permission:
+      type: string
+      enum:
+        - view
+        - edit
+      description: |
+        Access permission level:
+        - `view`: Read-only access (via viewId)
+        - `edit`: Full CRUD access (via shareId)
+      example: "edit"
+
+    Error:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          type: string
+          description: Human-readable error message
+          example: "Edit permission required"
+
+  securitySchemes:
+    editPermission:
+      type: apiKey
+      in: path
+      name: id
+      description: |
+        Link-based edit permission. Client must provide shareId in path parameter.
+        Server validates by checking if path ID matches list's shareId.
+
+tags:
+  - name: Lists
+    description: Todo list management
+  - name: Items
+    description: Todo item management
