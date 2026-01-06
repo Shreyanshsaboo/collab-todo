@@ -40,7 +40,7 @@ export async function verifyPassword(
  * @returns JWT token string
  */
 export function generateToken(user: UserDocument): string {
-  return jwt.sign(
+  const token = jwt.sign(
     {
       userId: user._id.toString(),
       email: user.email,
@@ -48,8 +48,9 @@ export function generateToken(user: UserDocument): string {
     JWT_SECRET,
     {
       expiresIn: JWT_EXPIRATION,
-    }
+    } as jwt.SignOptions
   );
+  return token;
 }
 
 /**
